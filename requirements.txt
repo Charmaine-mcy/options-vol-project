@@ -1,0 +1,7 @@
+numpy>=2.0
+scipy>=1.14
+pandas>=2.2
+matplotlib>=3.9
+yfinance>=0.2.50
+lxml>=5.0          # needed by yfinance for earnings-date scraping
+schedule>=1.2      # snapshot loop in src/scheduler.py

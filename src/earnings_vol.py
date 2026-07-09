@@ -1,0 +1,150 @@
+"""
+Implied vol around an earnings date.  python -m src.earnings_vol [--ticker NFLX]
+
+With a single data snapshot you can't watch vol crush happen in the time
+series (that needs a pull before AND after the event), but you can see the
+same economics cross-sectionally in the term structure:
+
+  - Expiries BEFORE earnings only cover ordinary trading days -> lower IV.
+  - The FIRST expiry AFTER earnings contains the announcement jump -> its
+    IV is visibly elevated ("the earnings premium").
+  - Later expiries dilute that one-day jump over more calendar time, so
+    IV falls back toward the long-run level. After the announcement, the
+    front expiry's IV collapses onto that baseline — the "vol crush".
+
+Bonus metric interviewers like: the market-implied earnings-day move. Total
+implied variance to an expiry is sigma^2 * T. If T2 is the first expiry after
+the event and T1 the last one before, the variance ATTRIBUTABLE to the event is
+approximately  sigma2^2*T2 - sigma1^2*T1 , so the implied one-day move is
+
+    move ~ sqrt( sigma2^2 * T2 - sigma1^2 * T1 )
+
+(as a fraction of spot; this treats non-event variance as flat across the gap).
+"""
+
+import argparse
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import yfinance as yf
+
+from src.data_fetch import (fetch_option_chain, filter_liquid,
+                            get_risk_free_rate, get_dividend_yield)
+from src.implied_vol import solve_chain
+from src.plotting import (atm_iv_by_expiry, _new_axes, OUT_DIR,
+                          CALL_COLOR, MUTED, INK_2, BASELINE, SURFACE)
+
+
+def next_earnings_date(ticker):
+    ed = yf.Ticker(ticker).earnings_dates
+    if ed is None or ed.empty:      # ETFs (e.g. SPY) have no earnings dates
+        return None
+    upcoming = ed[ed.index > pd.Timestamp.now(tz=ed.index.tz)]
+    return upcoming.index.min() if len(upcoming) else None
+
+
+def earnings_curve_chart(solved, spot, ticker, earnings, out_name=None):
+    """
+    Draw the ATM term structure with the earnings date marked, from an
+    already-solved chain. Overwrites outputs/earnings_{ticker}.png (stable
+    filename — one current version). Returns a summary dict with the
+    pre/post-earnings ATM IVs and the implied earnings-day move (fields are
+    None when an expiry on that side of the event isn't available).
+    """
+    atm = atm_iv_by_expiry(solved, spot)
+    if atm.empty:
+        raise ValueError(f"{ticker}: no ATM IVs available to chart")
+    # average call/put ATM IV per expiry (they should agree; averaging cancels
+    # some lastPrice noise)
+    atm_avg = (atm.groupby("expiry")
+                  .agg(T_days=("T_days", "first"), atm_iv=("atm_iv", "mean"))
+                  .reset_index().sort_values("T_days"))
+    atm_avg["expiry"] = pd.to_datetime(atm_avg["expiry"])
+
+    earnings_naive = earnings.tz_localize(None)
+    pre = atm_avg[atm_avg["expiry"] < earnings_naive].tail(1)
+    post = atm_avg[atm_avg["expiry"] >= earnings_naive].head(1)
+
+    fig, ax = _new_axes(
+        f"{ticker} ATM implied vol around earnings",
+        f"earnings {earnings:%d %b %Y} · spot {spot:.2f} · "
+        f"ATM IV = call/put average, interpolated at spot")
+    ax.plot(atm_avg["T_days"], atm_avg["atm_iv"] * 100, color=CALL_COLOR,
+            lw=2, marker="o", ms=5)
+    days_to_earnings = (earnings_naive - pd.Timestamp.now()).total_seconds() / 86400
+    ax.axvline(days_to_earnings, color=BASELINE, lw=1.2, ls="--")
+    y_lo, y_hi = ax.get_ylim()
+    ax.annotate(f"earnings\n{earnings:%b %d}",
+                (days_to_earnings, y_lo + 0.06 * (y_hi - y_lo)),
+                xytext=(6, 0), textcoords="offset points",
+                color=MUTED, fontsize=8.5)
+    if len(post):
+        x, y = post["T_days"].iloc[0], post["atm_iv"].iloc[0] * 100
+        ax.annotate(f"first post-earnings expiry: {y:.1f}%", (x, y),
+                    xytext=(16, -6), textcoords="offset points",
+                    color=INK_2, fontsize=8.5, va="top",
+                    arrowprops=dict(arrowstyle="-", color=MUTED, lw=0.8))
+    ax.set_xlabel("Days to expiry", color=INK_2, fontsize=10)
+    ax.set_ylabel("ATM implied volatility (%)", color=INK_2, fontsize=10)
+    OUT_DIR.mkdir(exist_ok=True)
+    path = OUT_DIR / (out_name or f"earnings_{ticker}.png")
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(fig)
+
+    summary = {"path": path, "earnings": earnings, "atm_curve": atm_avg,
+               "pre_expiry": None, "pre_iv": None,
+               "post_expiry": None, "post_iv": None, "implied_move": None}
+    if len(pre):
+        summary["pre_expiry"] = pre["expiry"].iloc[0]
+        summary["pre_iv"] = float(pre["atm_iv"].iloc[0])
+    if len(post):
+        summary["post_expiry"] = post["expiry"].iloc[0]
+        summary["post_iv"] = float(post["atm_iv"].iloc[0])
+    if len(pre) and len(post):
+        s1, T1 = summary["pre_iv"], pre["T_days"].iloc[0] / 365
+        s2, T2 = summary["post_iv"], post["T_days"].iloc[0] / 365
+        summary["implied_move"] = float(np.sqrt(max(s2**2 * T2 - s1**2 * T1, 0.0)))
+    return summary
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ticker", default="NFLX")
+    ap.add_argument("--refresh", action="store_true")
+    args = ap.parse_args()
+    t = args.ticker.upper()
+
+    earnings = next_earnings_date(t)
+    if earnings is None:
+        print(f"  no upcoming earnings date found for {t}; nothing to plot")
+        return
+    print(f"  {t} next earnings: {earnings:%Y-%m-%d %H:%M %Z}")
+
+    df, spot, stale = fetch_option_chain(t, max_expiries=10, force_refresh=args.refresh)
+    r, q = get_risk_free_rate(), get_dividend_yield(t, spot)
+    liquid, _ = filter_liquid(df, stale)
+    solved, diag = solve_chain(liquid, spot, r, q)
+
+    s = earnings_curve_chart(solved, spot, t, earnings)
+    print(f"  wrote {s['path']}")
+    show = s["atm_curve"].copy()
+    show["atm_iv"] = (show["atm_iv"] * 100).round(2)
+    print("\n  ATM IV by expiry:")
+    print(show.to_string(index=False))
+
+    if s["implied_move"] is not None:
+        print(f"\n  last pre-earnings expiry  {s['pre_expiry']:%Y-%m-%d}: "
+              f"ATM IV {s['pre_iv']:.1%}")
+        print(f"  first post-earnings expiry {s['post_expiry']:%Y-%m-%d}: "
+              f"ATM IV {s['post_iv']:.1%}")
+        print(f"  => market-implied earnings-day move ~ {s['implied_move']:.1%} of spot "
+              f"(~${s['implied_move'] * spot:.0f} on {t})")
+        print("  After the print, the post-earnings expiry's IV should collapse "
+              "toward the pre-earnings level — re-run this script the day after "
+              "to capture the crush with a second snapshot.")
+
+
+if __name__ == "__main__":
+    main()
