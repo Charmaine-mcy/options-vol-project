@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+logs/*.log
+
+# Snapshot data — accumulates fast and isn't meant to be version-controlled.
+# Keep a small sample so the repo is reproducible without bloating it.
+data/snapshots/*
+!data/snapshots/.gitkeep
+!data/snapshots/sample_*.csv
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Environment / secrets, if you ever add an API key for a paid data source
+.env
