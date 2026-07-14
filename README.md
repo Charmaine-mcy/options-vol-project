@@ -162,7 +162,11 @@ carries 39% ATM IV, the first post-earnings expiry (Jul 17) jumps to 67%,
 and later expiries decay back toward the ~43% baseline as the one-day jump is
 diluted over more calendar time. Backing out the event variance
 (`sigma2^2*T2 - sigma1^2*T1`) gives a **market-implied earnings-day move of
-~10%** of spot. After the print, the Jul 17 IV should collapse onto the
+~10%** of spot. In the final days before a report the last pre-earnings
+expiry has usually expired; the code then strips a long-dated baseline vol
+out of the post-earnings expiry instead (`sqrt((sigma2^2 - sigma_base^2) *
+T2)`) — on 13 Jul data that gave 9.1%, consistent with the 10% pre/post
+estimate from four days earlier. After the print, the Jul 17 IV should collapse onto the
 baseline — the "vol crush"; re-running `src.earnings_vol` the morning after
 captures the before/after pair.
 

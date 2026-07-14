@@ -95,17 +95,33 @@ def earnings_curve_chart(solved, spot, ticker, earnings, out_name=None):
 
     summary = {"path": path, "earnings": earnings, "atm_curve": atm_avg,
                "pre_expiry": None, "pre_iv": None,
-               "post_expiry": None, "post_iv": None, "implied_move": None}
+               "post_expiry": None, "post_iv": None,
+               "implied_move": None, "move_method": None}
     if len(pre):
         summary["pre_expiry"] = pre["expiry"].iloc[0]
         summary["pre_iv"] = float(pre["atm_iv"].iloc[0])
     if len(post):
         summary["post_expiry"] = post["expiry"].iloc[0]
         summary["post_iv"] = float(post["atm_iv"].iloc[0])
+
     if len(pre) and len(post):
         s1, T1 = summary["pre_iv"], pre["T_days"].iloc[0] / 365
         s2, T2 = summary["post_iv"], post["T_days"].iloc[0] / 365
         summary["implied_move"] = float(np.sqrt(max(s2**2 * T2 - s1**2 * T1, 0.0)))
+        summary["move_method"] = "pre/post expiry variance difference"
+    elif len(post):
+        # In the final days before a report the last pre-earnings expiry has
+        # often already expired. Same economics, different decomposition:
+        # the post-earnings expiry's total variance is the one-day event
+        # variance plus ordinary diffusion at the long-run vol, so strip a
+        # long-dated baseline out of it:  move ~ sqrt((s2^2 - sb^2) * T2).
+        base = atm_avg[atm_avg["T_days"] >= 45]
+        if len(base):
+            sb = float(base["atm_iv"].mean())
+            s2, T2 = summary["post_iv"], post["T_days"].iloc[0] / 365
+            summary["implied_move"] = float(np.sqrt(max((s2**2 - sb**2) * T2, 0.0)))
+            summary["move_method"] = (f"post-earnings expiry vs long-dated "
+                                      f"baseline ({sb:.0%})")
     return summary
 
 
@@ -135,12 +151,13 @@ def main():
     print(show.to_string(index=False))
 
     if s["implied_move"] is not None:
-        print(f"\n  last pre-earnings expiry  {s['pre_expiry']:%Y-%m-%d}: "
-              f"ATM IV {s['pre_iv']:.1%}")
+        if s["pre_expiry"] is not None:
+            print(f"\n  last pre-earnings expiry  {s['pre_expiry']:%Y-%m-%d}: "
+                  f"ATM IV {s['pre_iv']:.1%}")
         print(f"  first post-earnings expiry {s['post_expiry']:%Y-%m-%d}: "
               f"ATM IV {s['post_iv']:.1%}")
         print(f"  => market-implied earnings-day move ~ {s['implied_move']:.1%} of spot "
-              f"(~${s['implied_move'] * spot:.0f} on {t})")
+              f"(~${s['implied_move'] * spot:.0f} on {t}) [{s['move_method']}]")
         print("  After the print, the post-earnings expiry's IV should collapse "
               "toward the pre-earnings level — re-run this script the day after "
               "to capture the crush with a second snapshot.")

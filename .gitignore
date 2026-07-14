@@ -28,3 +28,4 @@ Thumbs.db
 
 # Environment / secrets, if you ever add an API key for a paid data source
 .env
+logs/crontab_backup_*.txt

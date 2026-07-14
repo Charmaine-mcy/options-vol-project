@@ -157,12 +157,12 @@ def run_ticker(ticker, force=False):
                 s = stage(f"{ticker} earnings chart", earnings_curve_chart,
                           solved, spot, ticker, earnings)
                 if s is not None:
-                    move = s["implied_move"]
                     outcomes["earnings"] = "ok"
-                    log(f"{ticker}: earnings chart rewritten "
-                        f"(report {earnings:%Y-%m-%d}, implied move "
-                        f"{move:.1%})" if move is not None else
-                        f"{ticker}: earnings chart rewritten (report {earnings:%Y-%m-%d})")
+                    msg = f"{ticker}: earnings chart rewritten (report {earnings:%Y-%m-%d}"
+                    if s["implied_move"] is not None:
+                        msg += (f", implied move {s['implied_move']:.1%} "
+                                f"via {s['move_method']}")
+                    log(msg + ")")
                 else:
                     outcomes["earnings"] = "FAILED"
             else:
