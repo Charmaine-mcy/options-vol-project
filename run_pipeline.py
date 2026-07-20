@@ -138,14 +138,14 @@ def run_ticker(ticker, force=False):
             p1 = plot_smile(solved, spot, exp, f"smile_{ticker}.png",
                             note=note, ticker=ticker)
             p2 = plot_smile(solved, spot, exp, f"smile_otm_{ticker}.png",
-                            note="OTM options only", otm_only=True, ticker=ticker)
+                            note=note, otm_only=True, ticker=ticker)
             return exp, p1, p2
         sm = stage(f"{ticker} smile charts", smiles)
         if sm is not None:
             exp, p1, p2 = sm
             outcomes["smile"] = f"ok (expiry {exp:%Y-%m-%d})"
             log(f"{ticker}: smile charts rewritten for expiry {exp:%Y-%m-%d} "
-                f"(nearest 30d at run time)")
+                f"(nearest 30d from snapshot date {latest_time:%Y-%m-%d})")
         else:
             outcomes["smile"] = "FAILED"
 

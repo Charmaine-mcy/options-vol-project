@@ -13,10 +13,10 @@ Recurring option-chain snapshots.  Two ways to run it:
     is closed. That keeps the cron line trivial — schedule it every 30
     minutes around the clock and let the script decide:
 
-        */30 * * * * cd "/Users/charmaine/Desktop/Financial projects/options-vol-project" && .venv/bin/python -m src.scheduler --once --ticker SPY >> data/snapshots/cron.log 2>&1
+        */30 * * * * cd "/path/to/options-vol-project" && .venv/bin/python -m src.scheduler --once --ticker SPY >> data/snapshots/cron.log 2>&1
 
-    (crontab -e, paste the line above; the quotes matter — the project path
-    contains a space.) macOS caveats worth knowing:
+    (crontab -e, paste the line above; quote the path if it contains
+    spaces.) macOS caveats worth knowing:
       - cron jobs don't fire while the laptop is asleep; there is no catch-up.
       - macOS privacy (TCC) can block cron from reading ~/Desktop; if the log
         shows "Operation not permitted", grant /usr/sbin/cron Full Disk

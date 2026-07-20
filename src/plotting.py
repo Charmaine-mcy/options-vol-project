@@ -65,10 +65,14 @@ def plot_smile(solved, spot, expiry, out_name="smile.png",
                   ((day["option_type"] == "call") & (day["strike"] >= spot))]
     T_days = day["T"].iloc[0] * 365
 
+    # Make the two smile variants self-explanatory side by side: the scope
+    # line comes from the otm_only flag, not from caller-supplied notes.
+    scope = ("OTM only — puts below spot, calls above spot" if otm_only
+             else "all liquid contracts (incl. ITM)")
     fig, ax = _new_axes(
         f"{ticker} implied volatility smile — {exp:%d %b %Y} expiry",
         f"{T_days:.0f} days to expiry · spot {spot:.2f} · "
-        f"{len(day)} liquid contracts" + (f" · {note}" if note else ""))
+        f"{len(day)} contracts · {scope}" + (f" · {note}" if note else ""))
 
     for typ, color, label in (("call", CALL_COLOR, "Calls"),
                               ("put", PUT_COLOR, "Puts")):
@@ -99,8 +103,14 @@ def plot_smile(solved, spot, expiry, out_name="smile.png",
 def pick_smile_expiry(solved, target_days=30):
     """
     Expiry nearest `target_days` out that has a healthy number of solved IVs.
-    Recomputed at every run — as calendar time passes, 'the ~30-day expiry'
-    rolls forward automatically instead of drifting like a hardcoded date.
+
+    "Out" is measured on the chain's T column, which is anchored to the
+    SNAPSHOT's price time (spot timestamp, or prior-session close for stale
+    pulls) — not the wall clock at run time. That keeps expiry selection
+    consistent with every T used in the IV solves: charting Friday's
+    snapshot on a Monday picks the expiry nearest 30 days from Friday.
+    Recomputed each run, so the chosen expiry still rolls forward as new
+    snapshots arrive instead of drifting like a hardcoded date.
     """
     ok = solved.dropna(subset=["iv"])
     per_exp = ok.groupby("expiry").agg(n=("iv", "size"), T=("T", "first"))

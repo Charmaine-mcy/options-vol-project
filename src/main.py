@@ -52,7 +52,7 @@ def main():
     exp = pick_smile_expiry(solved)
     p1 = plot_smile(solved, spot, exp, f"smile_{t}.png", note=note, ticker=t)
     p2 = plot_smile(solved, spot, exp, f"smile_otm_{t}.png",
-                    note="OTM options only", otm_only=True, ticker=t)
+                    note=note, otm_only=True, ticker=t)
     p3, atm = plot_term_structure(solved, spot, out_name=f"term_structure_{t}.png",
                                   note=note, ticker=t)
     for p in (p1, p2, p3):

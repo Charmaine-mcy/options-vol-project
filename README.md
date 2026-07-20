@@ -172,9 +172,11 @@ implied vols on it → refresh all charts. Two chart update policies:
 - **Replacing** — `smile_{TICKER}.png`, `smile_otm_{TICKER}.png`,
   `term_structure_{TICKER}.png`, `earnings_{TICKER}.png` are regenerated from
   the latest snapshot only and overwritten in place: always exactly one
-  current version, no dated pileup. The smile expiry is re-picked at run time
-  (nearest listed expiry to 30 days out), so it rolls forward automatically
-  as the calendar advances.
+  current version, no dated pileup. The smile expiry is re-picked each run as
+  the listed expiry nearest 30 days *from the snapshot's own timestamp* — the
+  same anchor as every T in the IV solves, not the wall clock, so the choice
+  stays consistent with the data even when charting a stale snapshot — and
+  rolls forward automatically as new snapshots arrive.
 
 The earnings chart has a lifecycle rather than a skip condition. **In
 window** (report within 60 days ahead, or within a 3-day grace period after —
