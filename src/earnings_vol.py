@@ -23,6 +23,8 @@ approximately  sigma2^2*T2 - sigma1^2*T1 , so the implied one-day move is
 """
 
 import argparse
+import json
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -30,18 +32,146 @@ import pandas as pd
 import yfinance as yf
 
 from src.data_fetch import (fetch_option_chain, filter_liquid,
-                            get_risk_free_rate, get_dividend_yield)
+                            get_risk_free_rate, get_dividend_yield, DATA_DIR)
 from src.implied_vol import solve_chain
 from src.plotting import (atm_iv_by_expiry, _new_axes, OUT_DIR,
-                          CALL_COLOR, MUTED, INK_2, BASELINE, SURFACE)
+                          CALL_COLOR, PUT_COLOR, MUTED, INK_2, BASELINE, SURFACE)
+
+
+def earnings_dates_around_now(ticker):
+    """(most recent past earnings, next upcoming earnings) — either may be
+    None; (None, None) for tickers without earnings (ETFs like SPY)."""
+    ed = yf.Ticker(ticker).earnings_dates
+    if ed is None or ed.empty:
+        return None, None
+    now = pd.Timestamp.now(tz=ed.index.tz)
+    past, future = ed.index[ed.index <= now], ed.index[ed.index > now]
+    return (past.max() if len(past) else None,
+            future.min() if len(future) else None)
 
 
 def next_earnings_date(ticker):
-    ed = yf.Ticker(ticker).earnings_dates
-    if ed is None or ed.empty:      # ETFs (e.g. SPY) have no earnings dates
-        return None
-    upcoming = ed[ed.index > pd.Timestamp.now(tz=ed.index.tz)]
-    return upcoming.index.min() if len(upcoming) else None
+    return earnings_dates_around_now(ticker)[1]
+
+
+# ---------------------------------------------------------------------------
+# Earnings analysis archive (data/earnings_archive_{ticker}.json)
+#
+# Each in-window pipeline run persists its computed numbers here — the ATM
+# curve, implied move, spot — under a "pre" or "post" capture for the event
+# being tracked. When the event passes out of the tracking window, the
+# out-of-window chart re-renders from this archive instead of recomputing,
+# so the last completed analysis survives indefinitely. A new event resets
+# the captures.
+# ---------------------------------------------------------------------------
+
+def _archive_path(ticker):
+    return DATA_DIR / f"earnings_archive_{ticker}.json"
+
+
+def load_earnings_archive(ticker):
+    p = _archive_path(ticker)
+    return json.loads(p.read_text()) if p.exists() else None
+
+
+def save_earnings_capture(ticker, event, phase, summary, spot, captured_at):
+    """
+    Record one in-window analysis in the archive. `phase` is 'pre' or 'post'
+    (relative to the event); re-captures of the same phase overwrite so the
+    archive ends up holding the LAST pre-event and LAST post-event analyses.
+    Written atomically (tmp + os.replace), like the snapshot files.
+    """
+    arch = load_earnings_archive(ticker) or {}
+    event_iso = event.isoformat()
+    if arch.get("event") != event_iso:          # new event -> fresh archive
+        arch = {"ticker": ticker, "event": event_iso, "captures": {}}
+    curve = summary["atm_curve"]
+    arch["captures"][phase] = {
+        "captured_at": captured_at.isoformat(),
+        "spot": float(spot),
+        "implied_move": summary["implied_move"],
+        "move_method": summary["move_method"],
+        "curve": [{"expiry": e.strftime("%Y-%m-%d"),
+                   "T_days": float(t), "atm_iv": float(v)}
+                  for e, t, v in zip(curve["expiry"], curve["T_days"],
+                                     curve["atm_iv"])],
+    }
+    p = _archive_path(ticker)
+    tmp = p.with_name(p.name + ".tmp")
+    tmp.write_text(json.dumps(arch, indent=2))
+    os.replace(tmp, p)
+    return arch
+
+
+def render_earnings_status(ticker, next_earnings, archive, out_name=None,
+                           display_horizon_days=120):
+    """
+    The out-of-window earnings chart: a clear "no upcoming earnings in the
+    tracking window" state plus the archived last-completed analysis (final
+    pre-earnings curve vs post-earnings crush, overlaid by expiry date),
+    clearly labeled as historical. Overwrites earnings_{ticker}.png so the
+    file never just goes quiet.
+    """
+    if next_earnings is not None:
+        days = (next_earnings - pd.Timestamp.now(tz=next_earnings.tz)).total_seconds() / 86400
+        state = f"next report {next_earnings:%d %b %Y} (~{days:.0f} days away)"
+    else:
+        state = "next report date unknown"
+
+    subtitle = f"{state} · tracking resumes automatically inside the window"
+    has_archive = bool(archive and archive.get("captures"))
+    if has_archive:
+        event = pd.Timestamp(archive["event"])
+        pre, post = (archive["captures"].get(p) for p in ("pre", "post"))
+        banner = f"ARCHIVED — last completed analysis: earnings {event:%d %b %Y}"
+        if pre and pre.get("implied_move") is not None:
+            banner += f" · implied move {pre['implied_move']:.1%}"
+        if pre and post:
+            realized = post["spot"] / pre["spot"] - 1.0
+            banner += f" · realized move {realized:+.1%}"
+        subtitle += "\n" + banner
+
+    fig, ax = _new_axes(
+        f"{ticker} earnings vol — no upcoming report in tracking window",
+        subtitle)
+
+    if has_archive:
+        for phase, color, label in (("pre", CALL_COLOR, "final pre-earnings"),
+                                    ("post", PUT_COLOR, "post-earnings (crush)")):
+            cap = archive["captures"].get(phase)
+            if not cap:
+                continue
+            cv = pd.DataFrame(cap["curve"])
+            cv["expiry"] = pd.to_datetime(cv["expiry"])
+            cv = cv[cv["expiry"] <= event.tz_localize(None) +
+                    pd.Timedelta(days=display_horizon_days)]
+            captured = pd.Timestamp(cap["captured_at"])
+            ax.plot(cv["expiry"], cv["atm_iv"] * 100, color=color, lw=2,
+                    marker="o", ms=4.5,
+                    label=f"{label} · captured {captured:%d %b %H:%M}")
+        ax.axvline(event.tz_localize(None), color=BASELINE, lw=1.2, ls="--")
+        y_lo, y_hi = ax.get_ylim()
+        ax.annotate(f"earnings\n{event:%b %d}",
+                    (event.tz_localize(None), y_lo + 0.05 * (y_hi - y_lo)),
+                    xytext=(6, 0), textcoords="offset points",
+                    color=MUTED, fontsize=8.5)
+        ax.set_xlabel("Expiry date", color=INK_2, fontsize=10)
+        ax.set_ylabel("ATM implied volatility (%)", color=INK_2, fontsize=10)
+        ax.legend(frameon=False, labelcolor=INK_2, fontsize=9, loc="upper right")
+        fig.autofmt_xdate(rotation=0, ha="center")
+    else:
+        ax.axis("off")
+        ax.text(0.5, 0.5, "No archived earnings analysis yet.\n"
+                "The first in-window run will populate this chart.",
+                transform=ax.transAxes, ha="center", va="center",
+                color=MUTED, fontsize=11)
+
+    OUT_DIR.mkdir(exist_ok=True)
+    path = OUT_DIR / (out_name or f"earnings_{ticker}.png")
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE, bbox_inches="tight")
+    plt.close(fig)
+    return path
 
 
 def earnings_curve_chart(solved, spot, ticker, earnings, out_name=None):

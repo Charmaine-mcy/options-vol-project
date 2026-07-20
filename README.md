@@ -200,11 +200,28 @@ implied vols on it → refresh all charts. Two chart update policies:
   snapshot archive, so every run appends one point to the constant-maturity
   ATM vol time series. Snapshot files are never modified.
 - **Replacing** — `smile_{TICKER}.png`, `smile_otm_{TICKER}.png`,
-  `term_structure_{TICKER}.png`, `earnings_{TICKER}.png` (when a report is
-  within 60 days) are regenerated from the latest snapshot only and
-  overwritten in place: always exactly one current version, no dated pileup.
-  The smile expiry is re-picked at run time (nearest listed expiry to 30 days
-  out), so it rolls forward automatically as the calendar advances.
+  `term_structure_{TICKER}.png`, `earnings_{TICKER}.png` are regenerated from
+  the latest snapshot only and overwritten in place: always exactly one
+  current version, no dated pileup. The smile expiry is re-picked at run time
+  (nearest listed expiry to 30 days out), so it rolls forward automatically
+  as the calendar advances.
+
+The earnings chart has a lifecycle rather than a skip condition. **In
+window** (report within 60 days ahead, or within a 3-day grace period after —
+so the vol crush gets captured), every run redraws the full premium analysis
+and persists its numbers (ATM curve, spot, implied move) to
+`data/earnings_archive_{TICKER}.json` as a "pre" or "post" capture,
+atomically, reset per event. **Out of window**, the chart is still rewritten
+every run — as an explicit status view: "no upcoming report in tracking
+window", the next report date and distance, and the archived last-completed
+analysis re-rendered from the JSON (final pre-earnings curve vs post-earnings
+crush, overlaid by expiry date, labeled ARCHIVED with implied vs realized
+move). The chart never goes silently stale, and the log says which state it's
+in ("earnings out of tracking window (next in 93d) — showing archived
+analysis from 2026-07-16") instead of a skip line. For the July 2026 NFLX
+event this captured: final pre-print front-expiry IV 213% (annualized, hours
+before the report), implied move 11.0%, realized next-day move -6.7%, front
+IV crushed to 38% a day later.
 
 Every stage is individually wrapped: one ticker or chart failing is logged
 (with traceback) to `logs/pipeline.log` and the rest of the run continues —

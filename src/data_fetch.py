@@ -30,6 +30,7 @@ Design choices worth defending in an interview:
 """
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -209,8 +210,24 @@ def save_snapshot(ticker="SPY", max_expiries=12):
         "dividend_yield": get_dividend_yield(ticker, spot),
         "n_contracts": len(df),
     }
-    df.to_csv(csv_path, index=False)
-    meta_path.write_text(json.dumps(meta, indent=2))
+    # Atomic write: dump to .tmp files, then os.replace() onto the final
+    # names only after both writes completed. A crash or interruption
+    # mid-write (cron firing during laptop sleep/wake, disk full, Ctrl-C)
+    # can therefore never leave a partial CSV in the immutable archive —
+    # os.replace is atomic on the same filesystem. The meta sidecar is
+    # finalized FIRST: load_snapshots discovers snapshots by globbing CSVs,
+    # so a visible CSV must always imply a complete pair.
+    tmp_csv = csv_path.with_name(csv_path.name + ".tmp")
+    tmp_meta = meta_path.with_name(meta_path.name + ".tmp")
+    try:
+        df.to_csv(tmp_csv, index=False)
+        tmp_meta.write_text(json.dumps(meta, indent=2))
+        os.replace(tmp_meta, meta_path)
+        os.replace(tmp_csv, csv_path)
+    except BaseException:
+        tmp_csv.unlink(missing_ok=True)     # don't litter the archive
+        tmp_meta.unlink(missing_ok=True)
+        raise
     print(f"  snapshot saved: {csv_path.name} ({len(df)} contracts, "
           f"spot {spot:.2f}, stale_quotes={stale})")
     return csv_path

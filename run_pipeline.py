@@ -37,12 +37,16 @@ from src.data_fetch import save_snapshot, load_snapshots, filter_liquid
 from src.implied_vol import solve_chain
 from src.plotting import (plot_smile, plot_term_structure, pick_smile_expiry,
                           atm_iv_history, plot_atm_history)
-from src.earnings_vol import next_earnings_date, earnings_curve_chart
+from src.data_fetch import NY
+from src.earnings_vol import (earnings_dates_around_now, earnings_curve_chart,
+                              save_earnings_capture, load_earnings_archive,
+                              render_earnings_status)
 from src.scheduler import market_is_open
 
 ROOT = Path(__file__).resolve().parent
 LOG_FILE = ROOT / "logs" / "pipeline.log"
-EARNINGS_LOOKAHEAD_DAYS = 60   # draw the earnings chart if a report is this close
+EARNINGS_LOOKAHEAD_DAYS = 60   # full analysis when a report is this close
+EARNINGS_GRACE_DAYS = 3        # ...and for this long after it (captures the crush)
 
 
 def log(msg, level="INFO"):
@@ -150,15 +154,35 @@ def run_ticker(ticker, force=False):
                    note=note, ticker=ticker)
         outcomes["term_structure"] = "ok" if ts is not None else "FAILED"
 
-        earnings = stage(f"{ticker} earnings date lookup", next_earnings_date, ticker)
-        if earnings is not None:
-            days_out = (earnings - pd.Timestamp.now(tz=earnings.tz)).total_seconds() / 86400
-            if 0 <= days_out <= EARNINGS_LOOKAHEAD_DAYS:
+        dates = stage(f"{ticker} earnings date lookup", earnings_dates_around_now, ticker)
+        prev_e, next_e = dates if dates is not None else (None, None)
+        if prev_e is None and next_e is None:
+            outcomes["earnings"] = "skipped (no earnings dates)"   # ETFs
+        else:
+            now = pd.Timestamp.now(tz=NY)
+            days_to_next = ((next_e - now).total_seconds() / 86400
+                            if next_e is not None else None)
+            days_since_prev = ((now - prev_e).total_seconds() / 86400
+                               if prev_e is not None else None)
+
+            # In-window: report coming up within the lookahead, OR just
+            # happened (grace period, so the vol crush gets captured).
+            event = None
+            if days_to_next is not None and days_to_next <= EARNINGS_LOOKAHEAD_DAYS:
+                event = next_e
+            elif days_since_prev is not None and days_since_prev <= EARNINGS_GRACE_DAYS:
+                event = prev_e
+
+            if event is not None:
                 s = stage(f"{ticker} earnings chart", earnings_curve_chart,
-                          solved, spot, ticker, earnings)
+                          solved, spot, ticker, event)
                 if s is not None:
-                    outcomes["earnings"] = "ok"
-                    msg = f"{ticker}: earnings chart rewritten (report {earnings:%Y-%m-%d}"
+                    phase = "pre" if now < event else "post"
+                    stage(f"{ticker} earnings archive save", save_earnings_capture,
+                          ticker, event, phase, s, spot, latest_time)
+                    outcomes["earnings"] = f"ok ({phase}-event)"
+                    msg = (f"{ticker}: earnings chart rewritten "
+                           f"({phase}-event, report {event:%Y-%m-%d}")
                     if s["implied_move"] is not None:
                         msg += (f", implied move {s['implied_move']:.1%} "
                                 f"via {s['move_method']}")
@@ -166,9 +190,29 @@ def run_ticker(ticker, force=False):
                 else:
                     outcomes["earnings"] = "FAILED"
             else:
-                outcomes["earnings"] = f"skipped ({days_out:.0f}d away)"
-        else:
-            outcomes["earnings"] = "skipped (no date found)"
+                # Out of window: never leave the chart silently stale —
+                # rewrite it as an explicit status view over the archived
+                # last-completed analysis.
+                archive = stage(f"{ticker} earnings archive load",
+                                load_earnings_archive, ticker)
+                p = stage(f"{ticker} earnings status chart",
+                          render_earnings_status, ticker, next_e, archive)
+                if p is not None:
+                    nxt_txt = (f"next in {days_to_next:.0f}d"
+                               if days_to_next is not None else "next date unknown")
+                    if archive and archive.get("captures"):
+                        ev = pd.Timestamp(archive["event"])
+                        caps = "+".join(sorted(archive["captures"]))
+                        outcomes["earnings"] = f"archived (event {ev:%Y-%m-%d})"
+                        log(f"{ticker}: earnings out of tracking window ({nxt_txt}) "
+                            f"— earnings_{ticker}.png shows archived analysis from "
+                            f"{ev:%Y-%m-%d} ({caps} captures)")
+                    else:
+                        outcomes["earnings"] = "status chart (no archive yet)"
+                        log(f"{ticker}: earnings out of tracking window ({nxt_txt}) "
+                            f"— no archived analysis yet, placeholder written")
+                else:
+                    outcomes["earnings"] = "FAILED"
     else:
         log(f"{ticker}: skipping replacing charts — no solved IVs this run", "WARN")
 
