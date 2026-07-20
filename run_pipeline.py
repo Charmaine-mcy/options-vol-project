@@ -40,13 +40,13 @@ from src.plotting import (plot_smile, plot_term_structure, pick_smile_expiry,
 from src.data_fetch import NY
 from src.earnings_vol import (earnings_dates_around_now, earnings_curve_chart,
                               save_earnings_capture, load_earnings_archive,
-                              render_earnings_status)
+                              render_earnings_status,
+                              EARNINGS_LOOKAHEAD_DAYS, EARNINGS_GRACE_DAYS)
 from src.scheduler import market_is_open
+from src.update_readme import update_readme
 
 ROOT = Path(__file__).resolve().parent
 LOG_FILE = ROOT / "logs" / "pipeline.log"
-EARNINGS_LOOKAHEAD_DAYS = 60   # full analysis when a report is this close
-EARNINGS_GRACE_DAYS = 3        # ...and for this long after it (captures the crush)
 
 
 def log(msg, level="INFO"):
@@ -233,6 +233,19 @@ def main():
         summary = ", ".join(f"{k}={v}" for k, v in (outcomes or {}).items()) \
             or "run crashed before any stage completed"
         log(f"{ticker.upper()} summary: {summary}")
+
+    # README auto-sections last, after every ticker's charts + archives exist.
+    # Wrapped like every other stage: a stats failure leaves the affected
+    # README section as-is and never blocks the run.
+    res = stage("README auto-update", update_readme, tickers=tuple(args.tickers))
+    if res is not None:
+        outcomes, changed = res
+        touched = [k for k, v in outcomes.items() if v == "updated"]
+        left = {k: v for k, v in outcomes.items() if v.startswith("left untouched")}
+        log(f"README auto-update: {'rewritten' if changed else 'no change'}"
+            + (f"; updated {', '.join(touched)}" if touched else "")
+            + (f"; LEFT UNTOUCHED (stats failed): {left}" if left else ""))
+
     log("=== pipeline run end ===")
 
 

@@ -5,7 +5,7 @@
 
 set -e  # stop on any unexpected error in this script itself
 
-PROJECT_DIR="/Users/charmaine/Desktop/Financial projects/options-vol-project"
+PROJECT_DIR="/Users/charmaine/options-vol-project"
 LOG_FILE="$PROJECT_DIR/logs/auto_push.log"
 
 export PATH="/usr/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"

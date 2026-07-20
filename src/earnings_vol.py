@@ -38,6 +38,10 @@ from src.plotting import (atm_iv_by_expiry, _new_axes, OUT_DIR,
                           CALL_COLOR, PUT_COLOR, MUTED, INK_2, BASELINE, SURFACE)
 
 
+EARNINGS_LOOKAHEAD_DAYS = 60   # full analysis when a report is this close
+EARNINGS_GRACE_DAYS = 3        # ...and for this long after it (captures the crush)
+
+
 def earnings_dates_around_now(ticker):
     """(most recent past earnings, next upcoming earnings) — either may be
     None; (None, None) for tickers without earnings (ETFs like SPY)."""
@@ -174,17 +178,16 @@ def render_earnings_status(ticker, next_earnings, archive, out_name=None,
     return path
 
 
-def earnings_curve_chart(solved, spot, ticker, earnings, out_name=None):
+def earnings_numbers(solved, spot, earnings):
     """
-    Draw the ATM term structure with the earnings date marked, from an
-    already-solved chain. Overwrites outputs/earnings_{ticker}.png (stable
-    filename — one current version). Returns a summary dict with the
-    pre/post-earnings ATM IVs and the implied earnings-day move (fields are
-    None when an expiry on that side of the event isn't available).
+    The earnings math without any drawing: ATM IV per expiry (call/put
+    averaged), the last pre-event / first post-event expiries, and the
+    implied earnings-day move. Returns (atm_avg, pre, post, summary);
+    summary fields are None when a side of the event isn't available.
     """
     atm = atm_iv_by_expiry(solved, spot)
     if atm.empty:
-        raise ValueError(f"{ticker}: no ATM IVs available to chart")
+        raise ValueError("no ATM IVs available")
     # average call/put ATM IV per expiry (they should agree; averaging cancels
     # some lastPrice noise)
     atm_avg = (atm.groupby("expiry")
@@ -195,6 +198,46 @@ def earnings_curve_chart(solved, spot, ticker, earnings, out_name=None):
     earnings_naive = earnings.tz_localize(None)
     pre = atm_avg[atm_avg["expiry"] < earnings_naive].tail(1)
     post = atm_avg[atm_avg["expiry"] >= earnings_naive].head(1)
+
+    summary = {"earnings": earnings, "atm_curve": atm_avg,
+               "pre_expiry": None, "pre_iv": None,
+               "post_expiry": None, "post_iv": None,
+               "implied_move": None, "move_method": None}
+    if len(pre):
+        summary["pre_expiry"] = pre["expiry"].iloc[0]
+        summary["pre_iv"] = float(pre["atm_iv"].iloc[0])
+    if len(post):
+        summary["post_expiry"] = post["expiry"].iloc[0]
+        summary["post_iv"] = float(post["atm_iv"].iloc[0])
+
+    if len(pre) and len(post):
+        s1, T1 = summary["pre_iv"], pre["T_days"].iloc[0] / 365
+        s2, T2 = summary["post_iv"], post["T_days"].iloc[0] / 365
+        summary["implied_move"] = float(np.sqrt(max(s2**2 * T2 - s1**2 * T1, 0.0)))
+        summary["move_method"] = "pre/post expiry variance difference"
+    elif len(post):
+        # In the final days before a report the last pre-earnings expiry has
+        # often already expired. Same economics, different decomposition:
+        # strip a long-dated baseline out of the post-event expiry's total
+        # variance:  move ~ sqrt((s2^2 - sb^2) * T2).
+        base = atm_avg[atm_avg["T_days"] >= 45]
+        if len(base):
+            sb = float(base["atm_iv"].mean())
+            s2, T2 = summary["post_iv"], post["T_days"].iloc[0] / 365
+            summary["implied_move"] = float(np.sqrt(max((s2**2 - sb**2) * T2, 0.0)))
+            summary["move_method"] = (f"post-earnings expiry vs long-dated "
+                                      f"baseline ({sb:.0%})")
+    return atm_avg, pre, post, summary
+
+
+def earnings_curve_chart(solved, spot, ticker, earnings, out_name=None):
+    """
+    Draw the ATM term structure with the earnings date marked, from an
+    already-solved chain. Overwrites outputs/earnings_{ticker}.png (stable
+    filename — one current version). Returns the earnings_numbers summary
+    dict plus the chart path.
+    """
+    atm_avg, pre, post, summary = earnings_numbers(solved, spot, earnings)
 
     fig, ax = _new_axes(
         f"{ticker} ATM implied vol around earnings",
@@ -223,35 +266,7 @@ def earnings_curve_chart(solved, spot, ticker, earnings, out_name=None):
     fig.savefig(path, facecolor=SURFACE, bbox_inches="tight")
     plt.close(fig)
 
-    summary = {"path": path, "earnings": earnings, "atm_curve": atm_avg,
-               "pre_expiry": None, "pre_iv": None,
-               "post_expiry": None, "post_iv": None,
-               "implied_move": None, "move_method": None}
-    if len(pre):
-        summary["pre_expiry"] = pre["expiry"].iloc[0]
-        summary["pre_iv"] = float(pre["atm_iv"].iloc[0])
-    if len(post):
-        summary["post_expiry"] = post["expiry"].iloc[0]
-        summary["post_iv"] = float(post["atm_iv"].iloc[0])
-
-    if len(pre) and len(post):
-        s1, T1 = summary["pre_iv"], pre["T_days"].iloc[0] / 365
-        s2, T2 = summary["post_iv"], post["T_days"].iloc[0] / 365
-        summary["implied_move"] = float(np.sqrt(max(s2**2 * T2 - s1**2 * T1, 0.0)))
-        summary["move_method"] = "pre/post expiry variance difference"
-    elif len(post):
-        # In the final days before a report the last pre-earnings expiry has
-        # often already expired. Same economics, different decomposition:
-        # the post-earnings expiry's total variance is the one-day event
-        # variance plus ordinary diffusion at the long-run vol, so strip a
-        # long-dated baseline out of it:  move ~ sqrt((s2^2 - sb^2) * T2).
-        base = atm_avg[atm_avg["T_days"] >= 45]
-        if len(base):
-            sb = float(base["atm_iv"].mean())
-            s2, T2 = summary["post_iv"], post["T_days"].iloc[0] / 365
-            summary["implied_move"] = float(np.sqrt(max((s2**2 - sb**2) * T2, 0.0)))
-            summary["move_method"] = (f"post-earnings expiry vs long-dated "
-                                      f"baseline ({sb:.0%})")
+    summary["path"] = path
     return summary
 
 
