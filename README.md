@@ -79,18 +79,18 @@ Round-trip tests (price at a known sigma, invert, compare) recover vol to
   reproducible; the filter runs after loading and reports what it dropped.
 
 <!-- AUTO:RESULTS_TABLE:START -->
-## Results (latest snapshot: 2026-07-21 12:28 ET, SPY spot 748.53)
+## Results (latest snapshot: 2026-07-21 12:30 ET, SPY spot 748.66)
 
 | Stage | Count |
 |---|---|
-| Contracts pulled (12 expiries) | 3,218 |
-| Survive liquidity filter | 2,376 (74%) |
-| IV solved via Newton | 1,432 (60%) |
-| IV solved via Brent fallback | 683 (29%) |
-| Failed (no root / outside bounds) | 261 (11.0%) |
+| Contracts pulled (12 expiries) | 3,225 |
+| Survive liquidity filter | 2,381 (74%) |
+| IV solved via Newton | 1,403 (59%) |
+| IV solved via Brent fallback | 682 (29%) |
+| Failed (no root / outside bounds) | 296 (12.4%) |
 
 Newton dominates, as expected when quotes are healthy and vega is meaningful across the chain; Brent mops up the deep wings and the shortest expiries.
-The 261 failures cluster in the shortest expiries and deep-ITM strikes; 181 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
+The 296 failures cluster in the shortest expiries and deep-ITM strikes; 198 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
 <!-- AUTO:RESULTS_TABLE:END -->
 
 <!-- AUTO:SMILE:START -->
@@ -247,9 +247,9 @@ macro prints.
 <!-- AUTO:DATA_QUALITY:START -->
 ## Data-quality caveats (observed, not hypothetical)
 
-- **This snapshot uses live bid/ask midpoints** (market-hours pull): 479 zero-bid contracts dropped and 363 more for spreads wider than 20% of mid.
+- **This snapshot uses live bid/ask midpoints** (market-hours pull): 481 zero-bid contracts dropped and 363 more for spreads wider than 20% of mid.
 - **yfinance's own `impliedVolatility` column** has been observed returning garbage (~1e-5) on overnight pulls — one reason this project solves for IV itself rather than trusting vendor fields.
-- **11.0% of IV solves failed** (261 contracts, mostly the shortest expiries and deep-ITM strikes); 181 were prices below intrinsic value — quotes that genuinely admit no implied vol.
+- **12.4% of IV solves failed** (296 contracts, mostly the shortest expiries and deep-ITM strikes); 198 were prices below intrinsic value — quotes that genuinely admit no implied vol.
 - **American vs European**: SPY/NFLX options are American; all IVs here carry a small upward bias from the unmodeled early-exercise premium.
 - **Discrete dividends** are approximated by a continuous yield (SPY q ~ 1.24% trailing); fine at this horizon, cruder for long-dated options.
 <!-- AUTO:DATA_QUALITY:END -->
