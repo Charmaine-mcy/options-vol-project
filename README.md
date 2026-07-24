@@ -79,7 +79,7 @@ Round-trip tests (price at a known sigma, invert, compare) recover vol to
   reproducible; the filter runs after loading and reports what it dropped.
 
 <!-- AUTO:RESULTS_TABLE:START -->
-## Results (latest snapshot: 2026-07-24 10:43 ET, SPY spot 738.25)
+## Results (latest snapshot: 2026-07-24 11:14 ET, SPY spot 738.25)
 
 | Stage | Count |
 |---|---|
