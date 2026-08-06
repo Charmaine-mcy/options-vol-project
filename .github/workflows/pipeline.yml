@@ -1,0 +1,54 @@
+name: market-data-pipeline
+
+on:
+  schedule:
+    # US market open / midday / near close, Mon-Fri, in UTC.
+    # Two entries per slot cover both daylight-saving regimes (EDT=UTC-4,
+    # EST=UTC-5); run_pipeline's market-hours guard turns whichever twin
+    # lands outside 9:30-16:00 ET into a chart-only refresh, and the
+    # in-hours extra just contributes a bonus snapshot.
+    - cron: "35 13 * * 1-5"   # 9:35 ET (EDT)  open
+    - cron: "35 14 * * 1-5"   # 9:35 ET (EST)  open
+    - cron: "30 16 * * 1-5"   # 12:30 ET (EDT) midday
+    - cron: "30 17 * * 1-5"   # 12:30 ET (EST) midday
+    - cron: "45 19 * * 1-5"   # 15:45 ET (EDT) near close
+    - cron: "45 20 * * 1-5"   # 15:45 ET (EST) near close
+  workflow_dispatch:          # manual trigger from the Actions tab
+
+permissions:
+  contents: write             # the workflow commits data/charts/README back
+
+concurrency:
+  group: pipeline             # never two runs racing to push
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        run: python run_pipeline.py
+
+      - name: Commit and push results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ -n $(git status --porcelain) ]]; then
+            git add -A
+            git commit -m "Automated pipeline update: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git pull --rebase origin main
+            git push
+          else
+            echo "No changes to commit."
+          fi

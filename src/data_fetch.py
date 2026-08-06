@@ -178,7 +178,9 @@ def save_snapshot(ticker="SPY", max_expiries=12):
     """
     One live pull saved to data/snapshots/ as an immutable, timestamped pair:
 
-        {ticker}_chain_{YYYY-MM-DD_HHMM}.csv        raw chain
+        {ticker}_chain_{YYYY-MM-DD_HHMM}.csv.gz     raw chain (gzipped ~8-10x,
+                                                    so the archive can live in
+                                                    version control)
         {ticker}_chain_{YYYY-MM-DD_HHMM}_meta.json  spot, timestamps, r, q
 
     Timestamps in the filename are New York time (the market's clock, so
@@ -193,9 +195,10 @@ def save_snapshot(ticker="SPY", max_expiries=12):
 
     SNAP_DIR.mkdir(parents=True, exist_ok=True)
     stem = f"{ticker.lower()}_chain_{pull_time:%Y-%m-%d_%H%M}"
-    if (SNAP_DIR / f"{stem}.csv").exists():          # same-minute pull
+    if ((SNAP_DIR / f"{stem}.csv").exists()          # same-minute pull
+            or (SNAP_DIR / f"{stem}.csv.gz").exists()):
         stem = f"{ticker.lower()}_chain_{pull_time:%Y-%m-%d_%H%M%S}"
-    csv_path = SNAP_DIR / f"{stem}.csv"
+    csv_path = SNAP_DIR / f"{stem}.csv.gz"
     meta_path = SNAP_DIR / f"{stem}_meta.json"
     if csv_path.exists() or meta_path.exists():
         raise FileExistsError(f"refusing to overwrite existing snapshot {csv_path.name}")
@@ -220,7 +223,9 @@ def save_snapshot(ticker="SPY", max_expiries=12):
     tmp_csv = csv_path.with_name(csv_path.name + ".tmp")
     tmp_meta = meta_path.with_name(meta_path.name + ".tmp")
     try:
-        df.to_csv(tmp_csv, index=False)
+        # compression must be explicit: the .tmp suffix defeats pandas'
+        # extension-based inference
+        df.to_csv(tmp_csv, index=False, compression="gzip")
         tmp_meta.write_text(json.dumps(meta, indent=2))
         os.replace(tmp_meta, meta_path)
         os.replace(tmp_csv, csv_path)
@@ -241,10 +246,14 @@ def load_snapshots(ticker="SPY", verbose=True):
     snapshot from its own sidecar metadata, and each snapshot's spot, r, q,
     and stale flag ride along as columns. Read-only: never touches the files.
     """
-    pairs = sorted(SNAP_DIR.glob(f"{ticker.lower()}_chain_*.csv"))
+    # Both formats coexist: .csv.gz (current) and plain .csv (pre-migration).
+    pairs = sorted(p for p in SNAP_DIR.glob(f"{ticker.lower()}_chain_*.csv*")
+                   if not p.name.endswith(".tmp"))
     blocks = []
     for csv_path in pairs:
-        meta_path = csv_path.with_name(csv_path.stem + "_meta.json")
+        base = (csv_path.name[:-len(".csv.gz")]
+                if csv_path.name.endswith(".csv.gz") else csv_path.stem)
+        meta_path = csv_path.with_name(base + "_meta.json")
         if not meta_path.exists():
             print(f"  [warn] {csv_path.name} has no meta sidecar; skipping")
             continue

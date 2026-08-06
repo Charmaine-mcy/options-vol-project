@@ -12,11 +12,10 @@ env/
 # Logs
 logs/*.log
 
-# Snapshot data — accumulates fast and isn't meant to be version-controlled.
-# Keep a small sample so the repo is reproducible without bloating it.
-data/snapshots/*
-!data/snapshots/.gitkeep
-!data/snapshots/sample_*.csv
+# Snapshot data IS version-controlled (gzipped, ~1-2 MB/month) — the GitHub
+# Actions pipeline needs the archive in the repo to append to it. Only
+# in-flight temp files from interrupted writes are excluded.
+data/snapshots/*.tmp
 
 # OS cruft
 .DS_Store

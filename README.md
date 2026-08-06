@@ -29,7 +29,8 @@ src/plotting.py        smile, term-structure & snapshot-history charts
 src/main.py            end-to-end pipeline
 src/earnings_vol.py    earnings vol premium / implied move (stretch)
 data/                  cached raw pulls + solved chains (CSV, one per day)
-data/snapshots/        immutable timestamped pulls (CSV + JSON sidecar each)
+data/snapshots/        immutable timestamped pulls (gzipped CSV + JSON sidecar)
+.github/workflows/     scheduled cloud pipeline (GitHub Actions)
 outputs/               charts (PNG, stable filenames — see update policy below)
 logs/pipeline.log      one line per pipeline stage: counts, convergence, failures
 ```
@@ -145,13 +146,15 @@ No earnings inside the tracking window at the moment — the next report is 20 O
 ## Tracking the smile over time (snapshots)
 
 Every call to `save_snapshot("SPY")` writes an **immutable** timestamped pair
-to `data/snapshots/` — raw chain CSV plus a JSON sidecar with the spot, spot
-timestamp, pull timestamp, risk-free rate, dividend yield, and a stale-quotes
-flag, so each snapshot is self-contained and reproducible:
+to `data/snapshots/` — the raw chain as a gzipped CSV (~8-10x smaller, so
+the whole archive lives in version control at ~1-2 MB/month) plus a JSON
+sidecar with the spot, spot timestamp, pull timestamp, risk-free rate,
+dividend yield, and a stale-quotes flag, so each snapshot is self-contained
+and reproducible:
 
 ```
-spy_chain_2026-07-09_0124.csv         (filename clock = New York time)
-spy_chain_2026-07-09_0124_meta.json
+spy_chain_2026-08-03_1330.csv.gz      (filename clock = New York time)
+spy_chain_2026-08-03_1330_meta.json
 ```
 
 Old snapshots are never overwritten: same-minute collisions get a seconds
@@ -203,30 +206,24 @@ and charts still refresh from the archive even if the day's pull fails. Each
 run logs contract counts, the liquidity-filter yield, IV convergence rate
 (newton/brent/failed split), and stale-quote status.
 
-Cron schedule (`crontab -e`) — US market open, midday, and near close on
-weekdays. Times are in the machine's local clock (here: Hong Kong, UTC+8);
-each slot has two entries so the schedule survives US daylight-saving
+**Scheduling** — a GitHub Actions workflow
+([`.github/workflows/pipeline.yml`](.github/workflows/pipeline.yml)) runs the
+pipeline in the cloud at US market open, midday, and near close on weekdays,
+then commits and pushes the refreshed data, charts, README, and notebook.
+Each slot has two UTC entries so the schedule survives US daylight-saving
 changes — the market-hours guard turns whichever twin lands outside
-9:30–16:00 ET into a no-snapshot chart refresh, and the in-hours extras just
-add snapshots:
+9:30–16:00 ET into a chart-only refresh. Because it runs on GitHub's
+machines, nothing depends on a laptop being awake; the repo maintains
+itself. (The workflow can also be triggered manually from the Actions tab.
+US exchange holidays aren't modeled; a holiday run just logs a skipped
+snapshot. Local scheduling via `cron` on `run_pipeline.py` still works for
+development, but should not run alongside Actions or the two will race to
+push.)
 
-```cron
-# open (9:30 ET)        midday (12:30 ET)      near close (15:45 ET)
-30 21 * * 1-5 cd "/path/to/options-vol-project" && .venv/bin/python run_pipeline.py >> logs/cron.log 2>&1
-30 22 * * 1-5 cd "/path/to/options-vol-project" && .venv/bin/python run_pipeline.py >> logs/cron.log 2>&1
-30 0  * * 2-6 cd "/path/to/options-vol-project" && .venv/bin/python run_pipeline.py >> logs/cron.log 2>&1
-30 1  * * 2-6 cd "/path/to/options-vol-project" && .venv/bin/python run_pipeline.py >> logs/cron.log 2>&1
-45 3  * * 2-6 cd "/path/to/options-vol-project" && .venv/bin/python run_pipeline.py >> logs/cron.log 2>&1
-45 4  * * 2-6 cd "/path/to/options-vol-project" && .venv/bin/python run_pipeline.py >> logs/cron.log 2>&1
-```
-
-(Midday/close slots use `2-6` = Tue–Sat local because those ET times fall
-after midnight Hong Kong time.) macOS caveats: cron doesn't fire while the
-laptop sleeps (no catch-up), and macOS privacy protection can block cron from
-reading `~/Desktop` — if `logs/cron.log` shows "Operation not permitted",
-grant `/usr/sbin/cron` Full Disk Access in System Settings, or move the
-project out of Desktop. US exchange holidays aren't modeled; a holiday run
-just logs a skipped snapshot.
+The pipeline also re-executes `notebooks/analysis.ipynb` when it's more than
+a week old, keeping its printed numbers current. The notebook's charts are
+relative links to `outputs/` rather than embedded copies, so they always
+show the latest committed charts and re-execution diffs stay tiny.
 
 **Analysis** — `load_snapshots("SPY")` combines every snapshot into one
 DataFrame indexed by pull time, and `atm_iv_history` + `plot_atm_history`

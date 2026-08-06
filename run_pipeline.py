@@ -47,6 +47,8 @@ from src.update_readme import update_readme
 
 ROOT = Path(__file__).resolve().parent
 LOG_FILE = ROOT / "logs" / "pipeline.log"
+NOTEBOOK = ROOT / "notebooks" / "analysis.ipynb"
+NOTEBOOK_MAX_AGE_DAYS = 7      # weekly re-execution keeps its numbers current
 
 
 def log(msg, level="INFO"):
@@ -219,6 +221,26 @@ def run_ticker(ticker, force=False):
     return outcomes
 
 
+def refresh_notebook():
+    """
+    Re-execute notebooks/analysis.ipynb when it's more than a week old, so
+    its printed numbers track the data. Cheap to keep current: its charts
+    are relative links to outputs/ (always live), and re-execution diffs are
+    a few KB of text. Returns a short outcome string for the log.
+    """
+    import time
+    age_days = (time.time() - NOTEBOOK.stat().st_mtime) / 86400
+    if age_days < NOTEBOOK_MAX_AGE_DAYS:
+        return f"fresh ({age_days:.1f}d old, refresh at {NOTEBOOK_MAX_AGE_DAYS}d)"
+    import nbformat
+    from nbclient import NotebookClient
+    nb = nbformat.read(NOTEBOOK, as_version=4)
+    NotebookClient(nb, timeout=600,
+                   resources={"metadata": {"path": str(NOTEBOOK.parent)}}).execute()
+    nbformat.write(nb, str(NOTEBOOK))
+    return f"re-executed (was {age_days:.1f}d old)"
+
+
 def main():
     ap = argparse.ArgumentParser(description="snapshot + chart refresh pipeline")
     ap.add_argument("--tickers", nargs="+", default=["SPY", "NFLX"])
@@ -245,6 +267,10 @@ def main():
         log(f"README auto-update: {'rewritten' if changed else 'no change'}"
             + (f"; updated {', '.join(touched)}" if touched else "")
             + (f"; LEFT UNTOUCHED (stats failed): {left}" if left else ""))
+
+    nb_res = stage("notebook refresh", refresh_notebook)
+    if nb_res is not None:
+        log(f"notebook: {nb_res}")
 
     log("=== pipeline run end ===")
 
