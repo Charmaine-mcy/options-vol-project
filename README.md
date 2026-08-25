@@ -80,18 +80,18 @@ Round-trip tests (price at a known sigma, invert, compare) recover vol to
   reproducible; the filter runs after loading and reports what it dropped.
 
 <!-- AUTO:RESULTS_TABLE:START -->
-## Results (latest snapshot: 2026-08-25 13:07 ET, SPY spot 765.34)
+## Results (latest snapshot: 2026-08-25 13:57 ET, SPY spot 764.98)
 
 | Stage | Count |
 |---|---|
 | Contracts pulled (12 expiries) | 3,717 |
-| Survive liquidity filter | 2,676 (72%) |
-| IV solved via Newton | 1,869 (70%) |
-| IV solved via Brent fallback | 686 (26%) |
-| Failed (no root / outside bounds) | 121 (4.5%) |
+| Survive liquidity filter | 2,661 (72%) |
+| IV solved via Newton | 1,884 (71%) |
+| IV solved via Brent fallback | 665 (25%) |
+| Failed (no root / outside bounds) | 112 (4.2%) |
 
 Newton dominates, as expected when quotes are healthy and vega is meaningful across the chain; Brent mops up the deep wings and the shortest expiries.
-The 121 failures cluster in the shortest expiries and deep-ITM strikes; 115 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
+The 112 failures cluster in the shortest expiries and deep-ITM strikes; 82 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
 <!-- AUTO:RESULTS_TABLE:END -->
 
 <!-- AUTO:SMILE:START -->
@@ -99,7 +99,7 @@ The 121 failures cluster in the shortest expiries and deep-ITM strikes; 115 of t
 
 ![smile](outputs/smile_otm_SPY.png)
 
-Under Black-Scholes assumptions the IV-vs-strike line would be flat. Instead SPY shows the classic **equity skew**: the 25 Sep 2026 expiry prices 13% at the money vs 23% for puts 10% below spot (+10.3 vol pts). Three standard explanations, all pushing the same direction:
+Under Black-Scholes assumptions the IV-vs-strike line would be flat. Instead SPY shows the classic **equity skew**: the 25 Sep 2026 expiry prices 13% at the money vs 23% for puts 10% below spot (+10.4 vol pts). Three standard explanations, all pushing the same direction:
 
 - **Crash risk is priced.** Since October 1987, index option markets have never priced equity returns as lognormal — the true return distribution has a fat left tail, and OTM puts are priced accordingly.
 - **The leverage effect.** When equity prices fall, leverage (D/E) mechanically rises and realized volatility goes up — so low-strike states genuinely are higher-vol states.
@@ -113,7 +113,7 @@ The far call wing is currently flat-to-soft (13% at 10% above spot) — no meani
 
 ![full smile](outputs/smile_SPY.png)
 
-In theory (European options, put-call parity) call IV and put IV must be identical at the same strike, and where both are **OTM** the data agrees: at the money on the 25 Sep 2026 expiry, calls solve to 12.3% and puts to 13.1% — a 0.8-vol-point gap, parity doing its job. Where options are **ITM**, the two series diverge sharply:
+In theory (European options, put-call parity) call IV and put IV must be identical at the same strike, and where both are **OTM** the data agrees: at the money on the 25 Sep 2026 expiry, calls solve to 12.4% and puts to 13.2% — a 0.8-vol-point gap, parity doing its job. Where options are **ITM**, the two series diverge sharply:
 
 - An ITM option's price is nearly all intrinsic value; the vol information lives in a few cents of time value, and quote noise and wide ITM spreads can swing ITM implied vols enormously. (OTM prices are *pure* time value — much more informative per cent of noise.)
 - SPY options are **American**-exercise while our model is European. The early-exercise premium is small but nonzero (larger for ITM puts, and around ex-dividend dates for calls), biasing ITM IVs up slightly.
@@ -138,7 +138,7 @@ Short-end readings deserve suspicion in general: 1-2 day expiries are the noisie
 
 NFLX reports 20 Oct 2026 (56 days away) — the event is being priced *cross-sectionally* right now: the first post-earnings expiry (20 Nov) carries 39% ATM IV while later expiries decay back toward baseline as the one-day jump is diluted over more calendar time.
 
-Backing out the event variance gives a **market-implied earnings-day move of 13.6%** of spot (method: pre/post expiry variance difference). After the print, the front expiry's IV should collapse onto the baseline — the "vol crush" — which the pipeline captures automatically in its post-event grace window.
+Backing out the event variance gives a **market-implied earnings-day move of 13.4%** of spot (method: pre/post expiry variance difference). After the print, the front expiry's IV should collapse onto the baseline — the "vol crush" — which the pipeline captures automatically in its post-event grace window.
 <!-- AUTO:EARNINGS:END -->
 
 ## Tracking the smile over time (snapshots)
@@ -242,9 +242,9 @@ macro prints.
 <!-- AUTO:DATA_QUALITY:START -->
 ## Data-quality caveats (observed, not hypothetical)
 
-- **This snapshot uses live bid/ask midpoints** (market-hours pull): 498 zero-bid contracts dropped and 543 more for spreads wider than 20% of mid.
+- **This snapshot uses live bid/ask midpoints** (market-hours pull): 517 zero-bid contracts dropped and 539 more for spreads wider than 20% of mid.
 - **yfinance's own `impliedVolatility` column** has been observed returning garbage (~1e-5) on overnight pulls — one reason this project solves for IV itself rather than trusting vendor fields.
-- **4.5% of IV solves failed** (121 contracts, mostly the shortest expiries and deep-ITM strikes); 115 were prices below intrinsic value — quotes that genuinely admit no implied vol.
+- **4.2% of IV solves failed** (112 contracts, mostly the shortest expiries and deep-ITM strikes); 82 were prices below intrinsic value — quotes that genuinely admit no implied vol.
 - **American vs European**: SPY/NFLX options are American; all IVs here carry a small upward bias from the unmodeled early-exercise premium.
 - **Discrete dividends** are approximated by a continuous yield (SPY q ~ 1.21% trailing); fine at this horizon, cruder for long-dated options.
 <!-- AUTO:DATA_QUALITY:END -->
