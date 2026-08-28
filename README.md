@@ -136,7 +136,7 @@ Short-end readings deserve suspicion in general: 1-2 day expiries are the noisie
 
 ![earnings](outputs/earnings_NFLX.png)
 
-NFLX reports 20 Oct 2026 (54 days away) — the event is being priced *cross-sectionally* right now: the first post-earnings expiry (20 Nov) carries 39% ATM IV while later expiries decay back toward baseline as the one-day jump is diluted over more calendar time.
+NFLX reports 20 Oct 2026 (53 days away) — the event is being priced *cross-sectionally* right now: the first post-earnings expiry (20 Nov) carries 39% ATM IV while later expiries decay back toward baseline as the one-day jump is diluted over more calendar time.
 
 Backing out the event variance gives a **market-implied earnings-day move of 13.6%** of spot (method: pre/post expiry variance difference). After the print, the front expiry's IV should collapse onto the baseline — the "vol crush" — which the pipeline captures automatically in its post-event grace window.
 <!-- AUTO:EARNINGS:END -->
