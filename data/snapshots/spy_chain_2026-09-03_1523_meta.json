@@ -1,0 +1,10 @@
+{
+  "ticker": "SPY",
+  "spot": 773.375,
+  "spot_time": "2026-09-03T15:23:00-04:00",
+  "pull_time": "2026-09-03T15:23:19.625855-04:00",
+  "stale_quotes": false,
+  "risk_free_rate": 0.036717585325324056,
+  "dividend_yield": 0.012007111685792791,
+  "n_contracts": 3834
+}
