@@ -80,18 +80,18 @@ Round-trip tests (price at a known sigma, invert, compare) recover vol to
   reproducible; the filter runs after loading and reports what it dropped.
 
 <!-- AUTO:RESULTS_TABLE:START -->
-## Results (latest snapshot: 2026-09-09 13:14 ET, SPY spot 763.16)
+## Results (latest snapshot: 2026-09-09 13:56 ET, SPY spot 763.17)
 
 | Stage | Count |
 |---|---|
 | Contracts pulled (12 expiries) | 3,025 |
-| Survive liquidity filter | 2,344 (77%) |
-| IV solved via Newton | 1,028 (44%) |
+| Survive liquidity filter | 2,343 (77%) |
+| IV solved via Newton | 1,053 (45%) |
 | IV solved via Brent fallback | 688 (29%) |
-| Failed (no root / outside bounds) | 628 (26.8%) |
+| Failed (no root / outside bounds) | 602 (25.7%) |
 
 Newton dominates, as expected when quotes are healthy and vega is meaningful across the chain; Brent mops up the deep wings and the shortest expiries.
-The 628 failures cluster in the shortest expiries and deep-ITM strikes; 480 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
+The 602 failures cluster in the shortest expiries and deep-ITM strikes; 361 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
 <!-- AUTO:RESULTS_TABLE:END -->
 
 <!-- AUTO:SMILE:START -->
@@ -138,7 +138,7 @@ Short-end readings deserve suspicion in general: 1-2 day expiries are the noisie
 
 NFLX reports 20 Oct 2026 (41 days away) — the event is being priced *cross-sectionally* right now: the first post-earnings expiry (23 Oct) carries 42% ATM IV while later expiries decay back toward baseline as the one-day jump is diluted over more calendar time.
 
-Backing out the event variance gives a **market-implied earnings-day move of 9.4%** of spot (method: pre/post expiry variance difference). After the print, the front expiry's IV should collapse onto the baseline — the "vol crush" — which the pipeline captures automatically in its post-event grace window.
+Backing out the event variance gives a **market-implied earnings-day move of 9.3%** of spot (method: pre/post expiry variance difference). After the print, the front expiry's IV should collapse onto the baseline — the "vol crush" — which the pipeline captures automatically in its post-event grace window.
 <!-- AUTO:EARNINGS:END -->
 
 ## Tracking the smile over time (snapshots)
@@ -242,9 +242,9 @@ macro prints.
 <!-- AUTO:DATA_QUALITY:START -->
 ## Data-quality caveats (observed, not hypothetical)
 
-- **This snapshot uses live bid/ask midpoints** (market-hours pull): 352 zero-bid contracts dropped and 329 more for spreads wider than 20% of mid.
+- **This snapshot uses live bid/ask midpoints** (market-hours pull): 350 zero-bid contracts dropped and 332 more for spreads wider than 20% of mid.
 - **yfinance's own `impliedVolatility` column** has been observed returning garbage (~1e-5) on overnight pulls — one reason this project solves for IV itself rather than trusting vendor fields.
-- **26.8% of IV solves failed** (628 contracts, mostly the shortest expiries and deep-ITM strikes); 480 were prices below intrinsic value — quotes that genuinely admit no implied vol.
+- **25.7% of IV solves failed** (602 contracts, mostly the shortest expiries and deep-ITM strikes); 361 were prices below intrinsic value — quotes that genuinely admit no implied vol.
 - **American vs European**: SPY/NFLX options are American; all IVs here carry a small upward bias from the unmodeled early-exercise premium.
 - **Discrete dividends** are approximated by a continuous yield (SPY q ~ 1.22% trailing); fine at this horizon, cruder for long-dated options.
 <!-- AUTO:DATA_QUALITY:END -->
