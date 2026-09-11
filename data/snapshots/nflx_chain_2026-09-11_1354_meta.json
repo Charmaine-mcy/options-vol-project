@@ -1,0 +1,10 @@
+{
+  "ticker": "NFLX",
+  "spot": 77.19270324707031,
+  "spot_time": "2026-09-11T13:54:00-04:00",
+  "pull_time": "2026-09-11T13:54:07.600891-04:00",
+  "stale_quotes": false,
+  "risk_free_rate": 0.038354952408002005,
+  "dividend_yield": 0.0,
+  "n_contracts": 3061
+}
