@@ -80,18 +80,18 @@ Round-trip tests (price at a known sigma, invert, compare) recover vol to
   reproducible; the filter runs after loading and reports what it dropped.
 
 <!-- AUTO:RESULTS_TABLE:START -->
-## Results (latest snapshot: 2026-10-19 15:25 ET, SPY spot 768.38)
+## Results (latest snapshot: 2026-10-20 14:05 ET, SPY spot 769.30)
 
 | Stage | Count |
 |---|---|
-| Contracts pulled (12 expiries) | 3,046 |
-| Survive liquidity filter | 2,429 (80%) |
-| IV solved via Newton | 1,323 (54%) |
-| IV solved via Brent fallback | 729 (30%) |
-| Failed (no root / outside bounds) | 377 (15.5%) |
+| Contracts pulled (12 expiries) | 3,175 |
+| Survive liquidity filter | 2,523 (79%) |
+| IV solved via Newton | 1,526 (60%) |
+| IV solved via Brent fallback | 758 (30%) |
+| Failed (no root / outside bounds) | 239 (9.5%) |
 
 Newton dominates, as expected when quotes are healthy and vega is meaningful across the chain; Brent mops up the deep wings and the shortest expiries.
-The 377 failures cluster in the shortest expiries and deep-ITM strikes; 275 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
+The 239 failures cluster in the shortest expiries and deep-ITM strikes; 228 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
 <!-- AUTO:RESULTS_TABLE:END -->
 
 <!-- AUTO:SMILE:START -->
@@ -99,11 +99,13 @@ The 377 failures cluster in the shortest expiries and deep-ITM strikes; 275 of t
 
 ![smile](outputs/smile_otm_SPY.png)
 
-Under Black-Scholes assumptions the IV-vs-strike line would be flat. Instead SPY shows the classic **equity skew**: the 13 Nov 2026 expiry prices 14% at the money vs 27% for puts 10% below spot (+12.6 vol pts). Three standard explanations, all pushing the same direction:
+Under Black-Scholes assumptions the IV-vs-strike line would be flat. Instead SPY shows the classic **equity skew**: the 20 Nov 2026 expiry prices 14% at the money vs 24% for puts 10% below spot (+10.7 vol pts). Three standard explanations, all pushing the same direction:
 
 - **Crash risk is priced.** Since October 1987, index option markets have never priced equity returns as lognormal — the true return distribution has a fat left tail, and OTM puts are priced accordingly.
 - **The leverage effect.** When equity prices fall, leverage (D/E) mechanically rises and realized volatility goes up — so low-strike states genuinely are higher-vol states.
 - **Demand for downside protection.** Institutions systematically buy index puts as insurance; dealers who sell them charge for the inventory risk.
+
+The far call wing is currently flat-to-soft (13% at 10% above spot) — no meaningful lottery-ticket bid for upside calls in this snapshot.
 <!-- AUTO:SMILE:END -->
 
 <!-- AUTO:CALLS_PUTS:START -->
@@ -111,7 +113,7 @@ Under Black-Scholes assumptions the IV-vs-strike line would be flat. Instead SPY
 
 ![full smile](outputs/smile_SPY.png)
 
-In theory (European options, put-call parity) call IV and put IV must be identical at the same strike, and where both are **OTM** the data agrees: at the money on the 13 Nov 2026 expiry, calls solve to 13.9% and puts to 13.9% — a 0.0-vol-point gap, parity doing its job. Where options are **ITM**, the two series diverge sharply:
+In theory (European options, put-call parity) call IV and put IV must be identical at the same strike, and where both are **OTM** the data agrees: at the money on the 20 Nov 2026 expiry, calls solve to 14.4% and puts to 13.1% — a 1.4-vol-point gap, parity doing its job. Where options are **ITM**, the two series diverge sharply:
 
 - An ITM option's price is nearly all intrinsic value; the vol information lives in a few cents of time value, and quote noise and wide ITM spreads can swing ITM implied vols enormously. (OTM prices are *pure* time value — much more informative per cent of noise.)
 - SPY options are **American**-exercise while our model is European. The early-exercise premium is small but nonzero (larger for ITM puts, and around ex-dividend dates for calls), biasing ITM IVs up slightly.
@@ -124,7 +126,7 @@ This is why desks build vol surfaces from OTM puts below spot and OTM calls abov
 
 ![term structure](outputs/term_structure_SPY.png)
 
-ATM IV currently averages 18.6% for expiries within a week vs 13.9% around one month: a **downward-sloping (backwardation)** curve — the market is pricing *more* volatility near-term than long-term. That is the stressed shape: either a known near-dated event (macro print, earnings cluster) or a recent vol spike that the market expects to mean-revert. Worth checking the calendar before reading it as generalized fear.
+ATM IV currently averages 13.5% for expiries within a week vs 13.7% around one month: an **essentially flat** curve — neither calm-market contango nor stress backwardation. Flat term structures are transitional; watch whether the short end lifts (event risk approaching) or the long end reasserts the usual premium.
 
 Short-end readings deserve suspicion in general: 1-2 day expiries are the noisiest numbers on the chart (tiny vega), and T is measured in **calendar** days, so an expiry spanning a weekend contains dead non-trading time that mechanically depresses its annualized IV. A trading-day clock would smooth this.
 <!-- AUTO:TERM_STRUCTURE:END -->
@@ -134,9 +136,9 @@ Short-end readings deserve suspicion in general: 1-2 day expiries are the noisie
 
 ![earnings](outputs/earnings_NFLX.png)
 
-NFLX reports 20 Oct 2026 (1 days away) — the event is being priced *cross-sectionally* right now: the first post-earnings expiry (23 Oct) carries 118% ATM IV while later expiries decay back toward baseline as the one-day jump is diluted over more calendar time.
+NFLX reports 20 Oct 2026 (0 days away) — the event is being priced *cross-sectionally* right now: the first post-earnings expiry (23 Oct) carries 128% ATM IV while later expiries decay back toward baseline as the one-day jump is diluted over more calendar time.
 
-Backing out the event variance gives a **market-implied earnings-day move of 11.6%** of spot (method: post-earnings expiry vs long-dated baseline (40%)). After the print, the front expiry's IV should collapse onto the baseline — the "vol crush" — which the pipeline captures automatically in its post-event grace window.
+Backing out the event variance gives a **market-implied earnings-day move of 11.2%** of spot (method: post-earnings expiry vs long-dated baseline (39%)). After the print, the front expiry's IV should collapse onto the baseline — the "vol crush" — which the pipeline captures automatically in its post-event grace window.
 <!-- AUTO:EARNINGS:END -->
 
 ## Tracking the smile over time (snapshots)
@@ -240,11 +242,11 @@ macro prints.
 <!-- AUTO:DATA_QUALITY:START -->
 ## Data-quality caveats (observed, not hypothetical)
 
-- **This snapshot uses live bid/ask midpoints** (market-hours pull): 312 zero-bid contracts dropped and 305 more for spreads wider than 20% of mid.
+- **This snapshot uses live bid/ask midpoints** (market-hours pull): 322 zero-bid contracts dropped and 330 more for spreads wider than 20% of mid.
 - **yfinance's own `impliedVolatility` column** has been observed returning garbage (~1e-5) on overnight pulls — one reason this project solves for IV itself rather than trusting vendor fields.
-- **15.5% of IV solves failed** (377 contracts, mostly the shortest expiries and deep-ITM strikes); 275 were prices below intrinsic value — quotes that genuinely admit no implied vol.
+- **9.5% of IV solves failed** (239 contracts, mostly the shortest expiries and deep-ITM strikes); 228 were prices below intrinsic value — quotes that genuinely admit no implied vol.
 - **American vs European**: SPY/NFLX options are American; all IVs here carry a small upward bias from the unmodeled early-exercise premium.
-- **Discrete dividends** are approximated by a continuous yield (SPY q ~ 1.23% trailing); fine at this horizon, cruder for long-dated options.
+- **Discrete dividends** are approximated by a continuous yield (SPY q ~ 1.22% trailing); fine at this horizon, cruder for long-dated options.
 <!-- AUTO:DATA_QUALITY:END -->
 
 ## Limitations / next steps
