@@ -80,18 +80,18 @@ Round-trip tests (price at a known sigma, invert, compare) recover vol to
   reproducible; the filter runs after loading and reports what it dropped.
 
 <!-- AUTO:RESULTS_TABLE:START -->
-## Results (latest snapshot: 2026-10-23 14:38 ET, SPY spot 760.42)
+## Results (latest snapshot: 2026-10-26 15:30 ET, SPY spot 765.28)
 
 | Stage | Count |
 |---|---|
-| Contracts pulled (12 expiries) | 3,615 |
-| Survive liquidity filter | 2,950 (82%) |
-| IV solved via Newton | 1,777 (60%) |
-| IV solved via Brent fallback | 957 (32%) |
-| Failed (no root / outside bounds) | 216 (7.3%) |
+| Contracts pulled (12 expiries) | 3,029 |
+| Survive liquidity filter | 2,312 (76%) |
+| IV solved via Newton | 1,456 (63%) |
+| IV solved via Brent fallback | 690 (30%) |
+| Failed (no root / outside bounds) | 166 (7.2%) |
 
 Newton dominates, as expected when quotes are healthy and vega is meaningful across the chain; Brent mops up the deep wings and the shortest expiries.
-The 216 failures cluster in the shortest expiries and deep-ITM strikes; 186 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
+The 166 failures cluster in the shortest expiries and deep-ITM strikes; 98 of them are quotes sitting below intrinsic value — prices that genuinely admit no implied vol, which the solver refuses rather than forcing a number.
 <!-- AUTO:RESULTS_TABLE:END -->
 
 <!-- AUTO:SMILE:START -->
@@ -99,11 +99,13 @@ The 216 failures cluster in the shortest expiries and deep-ITM strikes; 186 of t
 
 ![smile](outputs/smile_otm_SPY.png)
 
-Under Black-Scholes assumptions the IV-vs-strike line would be flat. Instead SPY shows the classic **equity skew**: the 20 Nov 2026 expiry prices 16% at the money vs 27% for puts 10% below spot (+11.7 vol pts). Three standard explanations, all pushing the same direction:
+Under Black-Scholes assumptions the IV-vs-strike line would be flat. Instead SPY shows the classic **equity skew**: the 20 Nov 2026 expiry prices 15% at the money vs 27% for puts 10% below spot (+11.8 vol pts). Three standard explanations, all pushing the same direction:
 
 - **Crash risk is priced.** Since October 1987, index option markets have never priced equity returns as lognormal — the true return distribution has a fat left tail, and OTM puts are priced accordingly.
 - **The leverage effect.** When equity prices fall, leverage (D/E) mechanically rises and realized volatility goes up — so low-strike states genuinely are higher-vol states.
 - **Demand for downside protection.** Institutions systematically buy index puts as insurance; dealers who sell them charge for the inventory risk.
+
+The far call wing is currently flat-to-soft (14% at 10% above spot) — no meaningful lottery-ticket bid for upside calls in this snapshot.
 <!-- AUTO:SMILE:END -->
 
 <!-- AUTO:CALLS_PUTS:START -->
@@ -111,7 +113,7 @@ Under Black-Scholes assumptions the IV-vs-strike line would be flat. Instead SPY
 
 ![full smile](outputs/smile_SPY.png)
 
-Put-call parity says call IV and put IV should be identical at the same strike — but in this snapshot they differ by 1.5 vol points even at the money (16.5% calls vs 15.0% puts on the 20 Nov 2026 expiry), larger than parity should allow. The likely culprit is quote noise and wide ITM spreads; treat single-strike IV readings from this snapshot with caution. The structural ITM divergence is on top of that:
+In theory (European options, put-call parity) call IV and put IV must be identical at the same strike, and where both are **OTM** the data agrees: at the money on the 20 Nov 2026 expiry, calls solve to 15.5% and puts to 14.4% — a 1.1-vol-point gap, parity doing its job. Where options are **ITM**, the two series diverge sharply:
 
 - An ITM option's price is nearly all intrinsic value; the vol information lives in a few cents of time value, and quote noise and wide ITM spreads can swing ITM implied vols enormously. (OTM prices are *pure* time value — much more informative per cent of noise.)
 - SPY options are **American**-exercise while our model is European. The early-exercise premium is small but nonzero (larger for ITM puts, and around ex-dividend dates for calls), biasing ITM IVs up slightly.
@@ -124,7 +126,7 @@ This is why desks build vol surfaces from OTM puts below spot and OTM calls abov
 
 ![term structure](outputs/term_structure_SPY.png)
 
-ATM IV currently averages 15.7% for expiries within a week vs 15.6% around one month: an **essentially flat** curve — neither calm-market contango nor stress backwardation. Flat term structures are transitional; watch whether the short end lifts (event risk approaching) or the long end reasserts the usual premium.
+ATM IV currently averages 16.6% for expiries within a week vs 14.9% around one month: a **downward-sloping (backwardation)** curve — the market is pricing *more* volatility near-term than long-term. That is the stressed shape: either a known near-dated event (macro print, earnings cluster) or a recent vol spike that the market expects to mean-revert. Worth checking the calendar before reading it as generalized fear.
 
 Short-end readings deserve suspicion in general: 1-2 day expiries are the noisiest numbers on the chart (tiny vega), and T is measured in **calendar** days, so an expiry spanning a weekend contains dead non-trading time that mechanically depresses its annualized IV. A trading-day clock would smooth this.
 <!-- AUTO:TERM_STRUCTURE:END -->
@@ -134,9 +136,11 @@ Short-end readings deserve suspicion in general: 1-2 day expiries are the noisie
 
 ![earnings](outputs/earnings_NFLX.png)
 
-NFLX reported 20 Oct 2026, 3 day(s) ago — this is the **vol crush** window. The front expiry's IV is collapsing back onto the long-dated baseline now that the event variance has been realized.
+No earnings inside the tracking window at the moment — the next report is 19 Jan 2027 (~85 days away); tracking resumes automatically inside the 60-day window. The chart shows the **archived analysis of the 16 Jul 2026 event**, rendered from numbers persisted at capture time (`data/earnings_archive_NFLX.json`), not recomputed:
 
-Final pre-print front-expiry IV was 213% (implied move 11.0%); the front expiry now solves to 80%.
+- Final pre-print capture (16 Jul 15:45 ET): front-expiry ATM IV 213% (annualized — an entire earnings move packed into one day), implied move 11.0%.
+- Post-print capture (17 Jul 15:45 ET): front expiry crushed to 38%.
+- Realized next-day move **-6.7%** vs 11.0% implied — the market overpaid for the event, which is the whole vol-crush trade in one line.
 <!-- AUTO:EARNINGS:END -->
 
 ## Tracking the smile over time (snapshots)
@@ -240,11 +244,11 @@ macro prints.
 <!-- AUTO:DATA_QUALITY:START -->
 ## Data-quality caveats (observed, not hypothetical)
 
-- **This snapshot uses live bid/ask midpoints** (market-hours pull): 355 zero-bid contracts dropped and 310 more for spreads wider than 20% of mid.
+- **This snapshot uses live bid/ask midpoints** (market-hours pull): 390 zero-bid contracts dropped and 327 more for spreads wider than 20% of mid.
 - **yfinance's own `impliedVolatility` column** has been observed returning garbage (~1e-5) on overnight pulls — one reason this project solves for IV itself rather than trusting vendor fields.
-- **7.3% of IV solves failed** (216 contracts, mostly the shortest expiries and deep-ITM strikes); 186 were prices below intrinsic value — quotes that genuinely admit no implied vol.
+- **7.2% of IV solves failed** (166 contracts, mostly the shortest expiries and deep-ITM strikes); 98 were prices below intrinsic value — quotes that genuinely admit no implied vol.
 - **American vs European**: SPY/NFLX options are American; all IVs here carry a small upward bias from the unmodeled early-exercise premium.
-- **Discrete dividends** are approximated by a continuous yield (SPY q ~ 1.24% trailing); fine at this horizon, cruder for long-dated options.
+- **Discrete dividends** are approximated by a continuous yield (SPY q ~ 1.23% trailing); fine at this horizon, cruder for long-dated options.
 <!-- AUTO:DATA_QUALITY:END -->
 
 ## Limitations / next steps
