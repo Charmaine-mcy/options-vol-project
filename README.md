@@ -136,11 +136,9 @@ Short-end readings deserve suspicion in general: 1-2 day expiries are the noisie
 
 ![earnings](outputs/earnings_NFLX.png)
 
-No earnings inside the tracking window at the moment — the next report is 19 Jan 2027 (~61 days away); tracking resumes automatically inside the 60-day window. The chart shows the **archived analysis of the 16 Jul 2026 event**, rendered from numbers persisted at capture time (`data/earnings_archive_NFLX.json`), not recomputed:
+NFLX reports 19 Jan 2027 (60 days away) — the event is being priced *cross-sectionally* right now: the first post-earnings expiry (19 Mar) carries 40% ATM IV while later expiries decay back toward baseline as the one-day jump is diluted over more calendar time.
 
-- Final pre-print capture (16 Jul 15:45 ET): front-expiry ATM IV 213% (annualized — an entire earnings move packed into one day), implied move 11.0%.
-- Post-print capture (17 Jul 15:45 ET): front expiry crushed to 38%.
-- Realized next-day move **-6.7%** vs 11.0% implied — the market overpaid for the event, which is the whole vol-crush trade in one line.
+Backing out the event variance gives a **market-implied earnings-day move of 18.1%** of spot (method: pre/post expiry variance difference). After the print, the front expiry's IV should collapse onto the baseline — the "vol crush" — which the pipeline captures automatically in its post-event grace window.
 <!-- AUTO:EARNINGS:END -->
 
 ## Tracking the smile over time (snapshots)
